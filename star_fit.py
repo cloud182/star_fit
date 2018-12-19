@@ -98,15 +98,18 @@ def analysis(star_cube, wave_range, function = 'moff', circular = False,
 
     #I'm fitting a first image summing 10 angstrom to have always a reference at the beginning of the wavelength range
     # This is needed because Hb is quite close to the beginning of the range
-    lam.append(np.mean([start,start+10]))  
-    ima = star_cube.get_image((start,start+10))
+    lam.append(np.mean([start,start+20]))  
+    ima = star_cube.get_image((start,start+20))
+#    x, y = np.indices(ima.data.shape)
+#    mask = (x-9)**2+(y-9)**2 > 5 **2
+#    ima.data.mask[mask] = True
 
-
-    fit, fitim, chi2_test = fit_function(ima, function = function, 
+    fit, fitim, chi2_test = fit_function(ima,function = function, 
                                          circular = circular, verbose = True) 
     chi2.append(chi2_test)
     
     if plot:
+#        ima.data.mask[mask] = False
         plots_2d(ima.data, fitim.data)   #plotting the 2D images
         radial_plot(ima.data, fitim.data) # plotting radial profiles
 
@@ -125,16 +128,17 @@ def analysis(star_cube, wave_range, function = 'moff', circular = False,
 
     #for the fits I'm looping between the initial and final wavelength of the datacube with a
     # wave_range step. Probably I'm going to change it and to divide the interval in a certain number o fixed steps.
-    for wave in np.arange(start+10,end, wave_range):
+    for wave in np.arange(start+20,end, wave_range):
         # I'm saving the intermediate wavelength of each image
         lam.append(np.mean([wave, wave+wave_range]))
         # from the datacube I'm producing one image for each wavelength interval
         ima = star_cube.get_image((wave,wave+wave_range),)
-            
+#        ima.data.mask[mask] = True    
         fit, fitim, chi2_test = fit_function(ima, function = function, 
                                          circular = circular) 
         chi2.append(chi2_test) # saving the reduced chi2
         if plot:
+#            ima.data.mask[mask] = False
             plots_2d(ima.data, fitim.data)
             radial_plot(ima.data, fitim.data)
 
@@ -213,7 +217,7 @@ def fit_function(ima, function='moff', circular = False, verbose = False):
 
 ###############################################################
     
-def make_plots(fits, save = False):   
+def make_plots(fits, save = False, outname = './'):   
 
     #plot peak intensity
     fig,ax = plt.subplots(1,1)
@@ -222,7 +226,7 @@ def make_plots(fits, save = False):
     ax.set_xlabel('Wavelength ($\\AA$)')
     ax.set_ylabel('Flux (10$^{-20}$ erg cm$^{-2}$ s$^{-1}$)')
     if save:
-        plt.savefig('I0_plot.png')
+        plt.savefig(outname+'I0_plot.png')
         plt.close()
     else:   
         plt.show()
@@ -230,56 +234,66 @@ def make_plots(fits, save = False):
     #plot center
     fig,ax = plt.subplots(1,1)
     x0 = fits['x0'] * 3600          #converting in arcsec
-    x0 = x0 - x0[0]                 #subtracting the first value in order to measure only shift
+    x0 = x0 - np.median(x0)                 #subtracting the first value in order to measure only shifts
     y0 = fits['y0'] * 3600
-    y0 = y0 - y0[0]
+    y0 = y0 - np.median(y0)
     
-    ax.errorbar(fits['wavelength'], x0, fits['err_x0']*3600, marker = 'o', ls ='', capsize = 3, label = 'x0') 
-    ax.errorbar(fits['wavelength'], y0, fits['err_y0']*3600, marker = 'o', ls ='', capsize = 3, label = 'y0') 
+    ax.errorbar(fits['wavelength'], x0, fits['err_x0']*3600, marker = 'o', 
+                ls ='', capsize = 3, label = 'x0') 
+    ax.errorbar(fits['wavelength'], y0, fits['err_y0']*3600, marker = 'o', 
+                ls ='', capsize = 3, label = 'y0') 
     ax.set_title('Center')
     ax.set_xlabel('Wavelength ($\\AA$)')
     ax.set_ylabel('$\\Delta$ x, $\\Delta$ y (arcsec) ')
     ax.legend(loc='best')
     if save:
-        plt.savefig('center_plot.png')
+        plt.tight_layout()
+        plt.savefig(outname+'center_plot.png')
         plt.close()
     else:   
         plt.show()
 
     #plot FWHM
     fig,ax = plt.subplots(1,1)
-    ax.errorbar(fits['wavelength'], fits['fwhm_x'], 0, marker = 'o', ls ='', capsize = 3, label = 'fwhm_x') 
-    ax.errorbar(fits['wavelength'], fits['fwhm_y'], fits['err_fwhm_y'], marker = 'o', ls ='', capsize = 3, label = 'fwhm_y') 
+    ax.errorbar(fits['wavelength'], fits['fwhm_x'], 0, marker = 'o', ls ='', 
+                capsize = 3, label = 'fwhm_x') 
+    ax.errorbar(fits['wavelength'], fits['fwhm_y'], 0, marker = 'o', ls ='', 
+                capsize = 3, label = 'fwhm_y') 
     ax.set_title('FWHM')
     ax.set_xlabel('Wavelength ($\\AA$)')
     ax.set_ylabel('FWHM (arcsec)')
     ax.legend(loc='best')
     if save:
-        plt.savefig('fwhm_plot.png')
+        plt.tight_layout()
+        plt.savefig(outname+'fwhm_plot.png')
         plt.close()
     else:   
         plt.show()
 
     #plot PA
     fig,ax = plt.subplots(1,1)
-    ax.errorbar(fits['wavelength'], fits['rot'], yerr = fits['err_rot'], marker = 'o', ls ='', capsize = 3)  
+    ax.errorbar(fits['wavelength'], fits['rot'], yerr = fits['err_rot'], 
+                marker = 'o', ls ='', capsize = 3)  
     ax.set_title('PA')
     ax.set_xlabel('Wavelength ($\\AA$)')
     ax.set_ylabel('PA (deg)')
     if save:
-        plt.savefig('rot_plot.png')
+        plt.tight_layout()
+        plt.savefig(outname+'rot_plot.png')
         plt.close()
     else:   
         plt.show()
 
     #plot chi2
     fig,ax = plt.subplots(1,1)
-    ax.errorbar(fits['wavelength'], fits['chi2'], yerr = 0, marker = 'o', ls ='', capsize = 3)  
+    ax.errorbar(fits['wavelength'], fits['chi2'], yerr = 0, marker = 'o', 
+                ls ='', capsize = 3)  
     ax.set_title('Reduced Chi2')
     ax.set_xlabel('Wavelength ($\\AA$)')
     ax.set_ylabel('Reduced Chi2')
     if save:
-        plt.savefig('chi2_plot.png')
+        plt.tight_layout()
+        plt.savefig(outname+'chi2_plot.png')
         plt.close()
     else:   
         plt.show()
@@ -291,13 +305,15 @@ def plots_2d(ima, fitim, save= False):
     print('max: {:1.4f}, min: {:1.4f}, median: {:1.4f}' .format(np.max(residuals), np.min(residuals), np.median(residuals)))
     # plotting the original image, the fit and the residuals
     fig, ax = plt.subplots(1,3, figsize=(15,4))
-    im0 = ax[0].imshow(ima, vmin = np.min(ima), vmax = np.max(ima), origin = 'lower')
+    im0 = ax[0].imshow(ima, vmin = np.min(ima), vmax = np.max(ima), 
+            origin = 'lower')
     ax[0].set_title('data')
     fig.colorbar(im0, ax = ax[0])
-    im1 = ax[1].imshow(fitim, vmin = np.min(ima), vmax = np.max(ima), origin = 'lower')
+    im1 = ax[1].imshow(fitim, vmin = np.min(ima), vmax = np.max(ima), 
+            origin = 'lower')
     ax[1].set_title('fit')
     fig.colorbar(im1, ax = ax[1])
-    im2 = ax[2].imshow(residuals, vmin = np.min(residuals), vmax = 1.0, origin = 'lower')
+    im2 = ax[2].imshow(residuals, vmin = -0.2, vmax = 0.2, origin = 'lower')
     ax[2].set_title('relative residuals')
     fig.colorbar(im2, ax = ax[2])
     if save:
@@ -375,7 +391,8 @@ def measure_sigma(fits):
         new_x.append(np.sqrt(x_max**2 - fwhm_x_l**2))
         new_y.append(np.sqrt(y_max**2 - fwhm_y_l**2))
     
-    data_for_conv = {'line_wave' :line_wave, 'sigma_x' : new_x , 'sigma_y' : new_y, 'PA': fits['rot']}
+    data_for_conv = {'line_wave' :line_wave, 'sigma_x' : new_x , 
+                     'sigma_y' : new_y, 'PA': fits['rot']}
 
     return data_for_conv
 
@@ -390,7 +407,8 @@ def convolution(hdu, fits, output):
                                   y_stddev=parameters['sigma_y'][i], \
                                   theta = parameters['PA'][i]*np.pi/180)
         print('FWHM x: {:2.4f}, FWHM y: {:2.4f}, PA: {:3.4f}, line: {}' \
-             .format(parameters['sigma_x'][i], parameters['sigma_y'][i], parameters['PA'][i], line))
+             .format(parameters['sigma_x'][i], parameters['sigma_y'][i], 
+                     parameters['PA'][i], line))
         index = extension_locator(line) 
         image = convolve(hdu[index].data[0,:,:], kernel)
         err = convolve(hdu[index+1].data[0,:,:], kernel)
@@ -416,18 +434,16 @@ def print_result(fits, output):
 
 if __name__ == '__main__':
 
-    filename = '../Cubes/DATACUBE_FINAL_NGC1365_P04-004.fits'
+    filename = '../Cubes/DATACUBE_FINAL_NGC1087_P01-003.fits'
     
     cube = Cube(filename)
-    star1 = select_star(cube,228,34,10,10)
-    star_ima = star1.sum(axis = 0)
-    plt.figure()
-    star_ima.plot()
-    plt.show()
-    fits = analysis(star1,100, function ='moff', circular = True, plot = False)
-    make_plots(fits, save = False)
-    output = './Moffat_NGC1365_P04-004.txt'
-    print_result(fits,output)
+    outname = 'NGC1087_P01_x212_y084_'
+    star1 = select_star(cube,84,212,10,10)
+    fits = analysis(star1, 200, function ='moff', circular = False, 
+                    plot = False)
+    make_plots(fits, save = True, outname = outname)
+#    output = './Moffat_NGC1365_P07_x189_y99.txt'
+#    print_result(fits,output)
 
 
     
