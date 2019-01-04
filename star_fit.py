@@ -4,10 +4,10 @@ from mpdaf.obj import Cube
 import matplotlib.pyplot as plt
 import astropy.units as u    
 from scipy.interpolate import interp1d
-from astropy.io import fits as ft
 from astropy.convolution import Gaussian2DKernel, convolve
 import pandas as pd
 import sys
+
 
 
 ###############################################################
@@ -112,9 +112,11 @@ def analysis(star_cube, wave_range, function = 'moff', circular = False,
 #        ima.data.mask[mask] = False
         plots_2d(ima.data, fitim.data)   #plotting the 2D images
         radial_plot(ima.data, fitim.data) # plotting radial profiles
-
-    x0.append(fit.center[1])
-    y0.append(fit.center[0])
+ 
+    #converting the center in pixel coordinates
+    x, y = ima.wcs.wcs.wcs_world2pix(fit.center[1],fit.center[0],0)
+    x0.append(x)
+    y0.append(y)
     err_y0.append(fit.err_center[0])
     err_x0.append(fit.err_center[1])
     I0.append(fit.peak)
@@ -143,9 +145,10 @@ def analysis(star_cube, wave_range, function = 'moff', circular = False,
             radial_plot(ima.data, fitim.data)
 
         #I'm saving the results of the fit in the previously prepared lists
-        #I'm leaving everything in arcsec
-        x0.append(fit.center[1])
-        y0.append(fit.center[0])
+        #I'm leaving everything in arcsec, except the center is in pixel
+        x, y = ima.wcs.wcs.wcs_world2pix(fit.center[1],fit.center[0],0)
+        x0.append(x)
+        y0.append(y)
         err_y0.append(fit.err_center[0])
         err_x0.append(fit.err_center[1])
         I0.append(fit.peak)
@@ -197,19 +200,27 @@ def fit_function(ima, function='moff', circular = False, verbose = False):
     # I'm setting everything up so I can choose to fit with a gaussian or with 
     # a moffat I'm doing the fit with MPDAF built in fitting functions
     if function == 'gauss':
-        fit = ima.gauss_fit(verbose = verbose,fit_back = True, circular = circular)
+        fit = ima.gauss_fit(verbose = verbose,fit_back = True, 
+                            flux = np.max(ima.data), peak = True, 
+                            circular = circular)
         fitim = gauss_image(wcs=ima.wcs, gauss=fit)
         if circular:
-            chi2_test = np.sum((ima.data-fitim.data)**2/fitim.data)/(np.size(ima.data)-7)
+            chi2_test = np.sum((ima.data-fitim.data)**2/fitim.data)\
+                                /(np.size(ima.data)-5)
         else:
-            chi2_test = np.sum((ima.data-fitim.data)**2/fitim.data)/(np.size(ima.data)-5)
+            chi2_test = np.sum((ima.data-fitim.data)**2/fitim.data)\
+                                /(np.size(ima.data)-7)
     elif function == 'moff':
-        fit = ima.moffat_fit(verbose = verbose, fit_back = True, circular = circular)
+        fit = ima.moffat_fit(verbose = verbose, fit_back = True, 
+                             flux = np.max(ima.data), peak = True, 
+                             circular = circular)
         fitim = moffat_image(wcs=ima.wcs, moffat=fit)
         if circular:
-            chi2_test = np.sum((ima.data-fitim.data)**2/fitim.data)/(np.size(ima.data)-8)
+            chi2_test = np.sum((ima.data-fitim.data)**2/fitim.data)\
+                                /(np.size(ima.data)-6)
         else:
-            chi2_test = np.sum((ima.data-fitim.data)**2/fitim.data)/(np.size(ima.data)-6)
+            chi2_test = np.sum((ima.data-fitim.data)**2/fitim.data)\
+                                /(np.size(ima.data)-8)
     else:
         print('Function not supported')
         sys.exit()
@@ -233,11 +244,13 @@ def make_plots(fits, save = False, outname = './'):
 
     #plot center
     fig,ax = plt.subplots(1,1)
-    x0 = fits['x0'] * 3600          #converting in arcsec
-    x0 = x0 - np.median(x0)                 #subtracting the first value in order to measure only shifts
-    y0 = fits['y0'] * 3600
-    y0 = y0 - np.median(y0)
-    
+    x0 = fits['x0']
+    y0 = fits['y0'] 
+
+    # measuring the shift in pixel with respect to the median and converting  
+    # in arcsec       
+    x0 = (x0 - x0[1])*0.2                 
+    y0 = (y0 - y0[1])*0.2
     ax.errorbar(fits['wavelength'], x0, fits['err_x0']*3600, marker = 'o', 
                 ls ='', capsize = 3, label = 'x0') 
     ax.errorbar(fits['wavelength'], y0, fits['err_y0']*3600, marker = 'o', 
@@ -249,6 +262,34 @@ def make_plots(fits, save = False, outname = './'):
     if save:
         plt.tight_layout()
         plt.savefig(outname+'center_plot.png')
+        plt.close()
+    else:   
+        plt.show()
+        
+    #polar coordinates
+    r = np.sqrt(x0**2+y0**2)
+    phi = np.arctan2(y0,x0)*180/np.pi  #measuring the angle and converting in deg
+    phi = phi%360.
+    fig,ax = plt.subplots(1,1)
+    ax.scatter(fits['wavelength'], r, marker = 'o') 
+    ax.set_title('Polar shift: R')
+    ax.set_xlabel('Wavelength ($\\AA$)')
+    ax.set_ylabel('R (arcsec)')
+    if save:
+        plt.tight_layout()
+        plt.savefig(outname+'polar_r_plot.png')
+        plt.close()
+    else:   
+        plt.show()
+        
+    fig,ax = plt.subplots(1,1)
+    ax.scatter(fits['wavelength'], phi, marker = 'o',) 
+    ax.set_title('Polar shift: Phi')
+    ax.set_xlabel('Wavelength ($\\AA$)')
+    ax.set_ylabel('Phi (deg)')
+    if save:
+        plt.tight_layout()
+        plt.savefig(outname+'polar_phi_plot.png')
         plt.close()
     else:   
         plt.show()
@@ -297,6 +338,21 @@ def make_plots(fits, save = False, outname = './'):
         plt.close()
     else:   
         plt.show()
+        
+    #plot ellipticity
+    fig,ax = plt.subplots(1,1)
+    ax.errorbar(fits['wavelength'], fits['fwhm_x']/fits['fwhm_y'], yerr = 0, 
+                marker = 'o', ls ='', capsize = 3)  
+    ax.set_title('Ellipticity')
+    ax.set_xlabel('Wavelength ($\\AA$)')
+    ax.set_ylabel('Ellipticity')
+    if save:
+        plt.tight_layout()
+        plt.savefig(outname+'ellipticity_plot.png')
+        plt.close()
+    else:   
+        plt.show()
+
 
 ###############################################################
 
@@ -434,15 +490,19 @@ def print_result(fits, output):
 
 if __name__ == '__main__':
 
-    filename = '../Cubes/DATACUBE_FINAL_NGC1087_P01-003.fits'
+    point   = '01'
+    number  = '003'
+    x = 212
+    y = 84
     
+    filename = '../Cubes/DATACUBE_FINAL_NGC1087_P'+point+'-'+number+'.fits'
     cube = Cube(filename)
-    outname = 'NGC1087_P01_x212_y084_'
-    star1 = select_star(cube,84,212,10,10)
+    outname = './plots/IC5332_P'+point+'_x'+str(x)+'_y'+str(y)+'_'
+    star1 = select_star(cube,y,x,10,10)
     fits = analysis(star1, 200, function ='moff', circular = False, 
                     plot = False)
-    make_plots(fits, save = True, outname = outname)
-#    output = './Moffat_NGC1365_P07_x189_y99.txt'
+    make_plots(fits, save = False, outname = outname)
+#    output = './plots/Moffat_IC5332_P'+point+'_x'+str(x)+'_y'+str(y)+'.txt'
 #    print_result(fits,output)
 
 

@@ -22,8 +22,8 @@ def plots_2d(f1, f2, filename=None, save= False):
                        origin = 'lower')
     ax[1].set_title('PSF2')
     fig.colorbar(im1, ax = ax[1])
-    im2 = ax[2].imshow(residuals, vmin = 0., 
-                       vmax = 1.5, origin = 'lower')
+    im2 = ax[2].imshow(residuals, vmin = 0.8, 
+                       vmax = 1.2, origin = 'lower')
     ax[2].set_title('Ratio')
     fig.colorbar(im2, ax = ax[2])
     if save:
@@ -234,7 +234,7 @@ def psf_test_rot(drot, nstep_rot, e = 0.9,
 
 if __name__ == '__main__':
     start = time.time()
-#    psf_test(0.01,10, function = 'moff', save = True)
+    psf_test(0.01,10, function = 'moff', save = True)
 #    psf_test2(0.1,40, fwhm_0 = 1., function = 'gauss', save = True)
-    psf_test_rot(5, 19, e = 0.9, function = 'moff', save = True)
+#    psf_test_rot(5, 19, e = 0.9, function = 'moff', save = True)
     print('Completed in {:4.4f} s' .format(time.time() -start))
