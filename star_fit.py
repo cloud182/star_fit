@@ -1,12 +1,25 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Dec 18 21:38:59 2018
+
+@author: congiu
+
+This is the code to measure the PSF as a function of the wavelength.
+"""
+
+
+
 import numpy as np
-from mpdaf.obj import gauss_image, moffat_image
 from mpdaf.obj import Cube
 import matplotlib.pyplot as plt
 import astropy.units as u    
 from scipy.interpolate import interp1d
 from astropy.convolution import Gaussian2DKernel, convolve
+import functions_v1 as fu
 import pandas as pd
 import sys
+import warnings
 
 
 
@@ -51,19 +64,11 @@ def select_star(cube,p,q,dp,dq):
     star = cube[:,p-dp:p+dp,q-dq:q+dq]
     return star
 
-###############################################################
-
-def wavelength_range(cube):
-    """
-    return the wavelength range of the datacube
-    """
-    cube_range = cube.get_range(unit_wave = u.angstrom)
-    return cube_range[0], cube_range[3]
     
 ###############################################################
 
 def analysis(star_cube, wave_range, function = 'moff', circular = False, 
-             plot = False):
+             n_0 = 2., plot = False):
     """
     the function divides the datacube in single images summing the lambda between wave_range wavelengths.
     Input:
@@ -79,7 +84,10 @@ def analysis(star_cube, wave_range, function = 'moff', circular = False,
            -- rot is in degrees and it should be measured from North westward
     """
 
-    start, end = wavelength_range(star_cube) #measuring the initial and final wavelength of the datacube
+    
+
+
+    start, end = fu.wavelength_range(star_cube) #measuring the initial and final wavelength of the datacube
     #setting the list to contain the results of the fits
     lam = []
     y0 = []
@@ -95,49 +103,62 @@ def analysis(star_cube, wave_range, function = 'moff', circular = False,
     rot = []
     err_rot = []
     chi2 = []
-
-    #I'm fitting a first image summing 10 angstrom to have always a reference at the beginning of the wavelength range
-    # This is needed because Hb is quite close to the beginning of the range
-    lam.append(np.mean([start,start+20]))  
-    ima = star_cube.get_image((start,start+20))
-#    x, y = np.indices(ima.data.shape)
-#    mask = (x-9)**2+(y-9)**2 > 5 **2
-#    ima.data.mask[mask] = True
-
-    fit, fitim, chi2_test = fit_function(ima,function = function, 
-                                         circular = circular, verbose = True) 
-    chi2.append(chi2_test)
+    if function == 'moff':
+        n = []
+        err_n = []
     
-    if plot:
-#        ima.data.mask[mask] = False
-        plots_2d(ima.data, fitim.data)   #plotting the 2D images
-        radial_plot(ima.data, fitim.data) # plotting radial profiles
- 
-    #converting the center in pixel coordinates
-    x, y = ima.wcs.wcs.wcs_world2pix(fit.center[1],fit.center[0],0)
-    x0.append(x)
-    y0.append(y)
-    err_y0.append(fit.err_center[0])
-    err_x0.append(fit.err_center[1])
-    I0.append(fit.peak)
-    err_I0.append(fit.err_peak)
-    fwhm_x.append(fit.fwhm[1])                 
-    err_fwhm_x.append(fit.err_fwhm[1])
-    fwhm_y.append(fit.fwhm[0])
-    err_fwhm_y.append(fit.err_fwhm[0])    
-    rot.append(fit.rot)
-    err_rot.append(fit.err_rot)
+
+        
+    delta = 0
+    #I'm fitting a first image summing 100 angstrom to have always a reference at the beginning of the wavelength range
+    # This is needed because Hb is quite close to the beginning of the range
+    if wave_range > 100:
+        delta = 100
+        lam.append(np.mean([start,start+delta]))  
+        ima = star_cube.get_image((start,start+delta))
+        x, y = np.indices(ima.data.shape)
+        mask = (x-15)**2+(y-15)**2 > 8 **2
+        ima.data.mask[mask] = True
+    
+        fit, fitim, chi2_test = fu.fit_function(ima,function = function, 
+                                                circular = circular, n = n_0, 
+                                                verbose = True) 
+        chi2.append(chi2_test)
+        
+        if plot:
+            plots_2d(ima.data, fitim.data)   #plotting the 2D images
+            radial_plot(ima.data, fitim.data) # plotting radial profiles
+#            ima.data.mask[mask] = False
+        #converting the center in pixel coordinates
+        x, y = ima.wcs.wcs.wcs_world2pix(fit.center[1],fit.center[0],0)
+        x0.append(x)
+        y0.append(y)
+        err_y0.append(fit.err_center[0])
+        err_x0.append(fit.err_center[1])
+        I0.append(fit.peak)
+        err_I0.append(fit.err_peak)
+        fwhm_x.append(fit.fwhm[1])                 
+        err_fwhm_x.append(fit.err_fwhm[1])
+        fwhm_y.append(fit.fwhm[0])
+        err_fwhm_y.append(fit.err_fwhm[0])    
+        rot.append(fit.rot)
+        err_rot.append(fit.err_rot)
+        if function == 'moff':
+            n.append(fit.n)
+            err_n.append(fit.err_n)
+
 
     #for the fits I'm looping between the initial and final wavelength of the datacube with a
     # wave_range step. Probably I'm going to change it and to divide the interval in a certain number o fixed steps.
-    for wave in np.arange(start+20,end, wave_range):
+    for wave in np.arange(start+delta,end, wave_range):
         # I'm saving the intermediate wavelength of each image
         lam.append(np.mean([wave, wave+wave_range]))
         # from the datacube I'm producing one image for each wavelength interval
         ima = star_cube.get_image((wave,wave+wave_range),)
-#        ima.data.mask[mask] = True    
-        fit, fitim, chi2_test = fit_function(ima, function = function, 
-                                         circular = circular) 
+        x, y = np.indices(ima.data.shape)
+        mask = (x-15)**2+(y-15)**2 > 8 **2   
+        fit, fitim, chi2_test = fu.fit_function(ima, function = function, 
+                                                circular = circular, n = n_0) 
         chi2.append(chi2_test) # saving the reduced chi2
         if plot:
 #            ima.data.mask[mask] = False
@@ -159,6 +180,9 @@ def analysis(star_cube, wave_range, function = 'moff', circular = False,
         err_fwhm_y.append(fit.err_fwhm[0])    
         rot.append(fit.rot)
         err_rot.append(fit.err_rot)
+        if function == 'moff':
+            n.append(fit.n)
+            err_n.append(fit.err_n)
         
     #saving everything in a dictionary for simplicity
     measurements = {} 
@@ -176,55 +200,11 @@ def analysis(star_cube, wave_range, function = 'moff', circular = False,
     measurements['err_fwhm_y'] = np.array(err_fwhm_y)
     measurements['rot'] = np.array(rot)
     measurements['err_rot'] = np.array(err_rot)
+    if function == 'moff':
+        measurements['n'] = np.array(n)
+        measurements['err_n'] = np.array(err_n)
     return measurements    
 
-###############################################################
-
-def fit_function(ima, function='moff', circular = False, verbose = False):
-    """
-    This is the function to perform the fits. It is possible to choose between 
-    'gauss' (Gaussian) or 'moff' (Moffat) as fitting functions.
-    The fit is performed with MPDAF built in functions.
-    Input:
-    - ima: the image over which the fit must be performed.
-    - circular: if true the function is circular, otherwise it is elliptical
-    - function: function to use for the fit. 
-                -- 'gauss': 2D Gaussian
-                -- 'moff': 2D Moffat
-    - verbose: print the results of the fit
-    Output:
-    - fit: the object containing all the info about the fit
-    - fitim: the image of the fit
-    - chi2_test: the reduced chi2 value for the fit.
-    """
-    # I'm setting everything up so I can choose to fit with a gaussian or with 
-    # a moffat I'm doing the fit with MPDAF built in fitting functions
-    if function == 'gauss':
-        fit = ima.gauss_fit(verbose = verbose,fit_back = True, 
-                            flux = np.max(ima.data), peak = True, 
-                            circular = circular)
-        fitim = gauss_image(wcs=ima.wcs, gauss=fit)
-        if circular:
-            chi2_test = np.sum((ima.data-fitim.data)**2/fitim.data)\
-                                /(np.size(ima.data)-5)
-        else:
-            chi2_test = np.sum((ima.data-fitim.data)**2/fitim.data)\
-                                /(np.size(ima.data)-7)
-    elif function == 'moff':
-        fit = ima.moffat_fit(verbose = verbose, fit_back = True, 
-                             flux = np.max(ima.data), peak = True, 
-                             circular = circular)
-        fitim = moffat_image(wcs=ima.wcs, moffat=fit)
-        if circular:
-            chi2_test = np.sum((ima.data-fitim.data)**2/fitim.data)\
-                                /(np.size(ima.data)-6)
-        else:
-            chi2_test = np.sum((ima.data-fitim.data)**2/fitim.data)\
-                                /(np.size(ima.data)-8)
-    else:
-        print('Function not supported')
-        sys.exit()
-    return fit, fitim, chi2_test
 
 ###############################################################
     
@@ -298,7 +278,7 @@ def make_plots(fits, save = False, outname = './'):
     fig,ax = plt.subplots(1,1)
     ax.errorbar(fits['wavelength'], fits['fwhm_x'], 0, marker = 'o', ls ='', 
                 capsize = 3, label = 'fwhm_x') 
-    ax.errorbar(fits['wavelength'], fits['fwhm_y'], 0, marker = 'o', ls ='', 
+    ax.errorbar(fits['wavelength'], fits['fwhm_y'], fits['err_fwhm_y'], marker = 'o', ls ='', 
                 capsize = 3, label = 'fwhm_y') 
     ax.set_title('FWHM')
     ax.set_xlabel('Wavelength ($\\AA$)')
@@ -340,6 +320,8 @@ def make_plots(fits, save = False, outname = './'):
         plt.show()
         
     #plot ellipticity
+    
+    err = 1/fits['fwhm_y']*fits['err_fwhm_y']
     fig,ax = plt.subplots(1,1)
     ax.errorbar(fits['wavelength'], fits['fwhm_x']/fits['fwhm_y'], yerr = 0, 
                 marker = 'o', ls ='', capsize = 3)  
@@ -352,6 +334,21 @@ def make_plots(fits, save = False, outname = './'):
         plt.close()
     else:   
         plt.show()
+        
+    if 'n' in fits.keys():
+        # n parameter    
+        fig,ax = plt.subplots(1,1)
+        ax.errorbar(fits['wavelength'], fits['n'], yerr = fits['err_n'], 
+                    marker = 'o', ls ='', capsize = 3)  
+        ax.set_title('n')
+        ax.set_xlabel('Wavelength ($\\AA$)')
+        ax.set_ylabel('n parameter')
+        if save:
+            plt.tight_layout()
+            plt.savefig(outname+'n_plot.png')
+            plt.close()
+        else:   
+            plt.show()
 
 
 ###############################################################
@@ -490,21 +487,42 @@ def print_result(fits, output):
 
 if __name__ == '__main__':
 
-    point   = '01'
-    number  = '003'
-    x = 212
-    y = 84
+    warnings.simplefilter('ignore')
+    galaxy = 'NGC1672'
+    point   = '02'
+    x = 258
+    y = 285
     
-    filename = '../Cubes/DATACUBE_FINAL_NGC1087_P'+point+'-'+number+'.fits'
+    filename = '../Cubes/DATACUBE_FINAL_'+galaxy+'_P'+point+'.fits'
     cube = Cube(filename)
-    outname = './plots/IC5332_P'+point+'_x'+str(x)+'_y'+str(y)+'_'
-    star1 = select_star(cube,y,x,10,10)
-    fits = analysis(star1, 200, function ='moff', circular = False, 
-                    plot = False)
-    make_plots(fits, save = False, outname = outname)
-#    output = './plots/Moffat_IC5332_P'+point+'_x'+str(x)+'_y'+str(y)+'.txt'
+    outname = './plots/'+galaxy+'_P'+point+'_x'+str(x)+'_y'+str(y)+'_'
+    star1 = select_star(cube,y,x,15,15)
+    
+#    fits = analysis(star1, 300, function ='moff', circular = False, 
+#                    plot = True)
+#    make_plots(fits, save = True, outname = outname)
+#    output = './plots/Moffat_'+galaxy+'_P'+point+'_x'+str(x)+'_y'+str(y)+'.txt'
 #    print_result(fits,output)
-
+    
+    #circular fit
+    outname = './plots/'+galaxy+'_P'+point+'_x'+str(x)+'_y'+str(y)+'_circ_'
+    star1 = select_star(cube,y,x,15,15)
+    fits = analysis(star1, 300, function ='moff', circular = True, 
+                    plot = False, n_0 = 2.0)
+    make_plots(fits, save = False, outname = outname)
+#    output = './plots/Moffat_'+galaxy+'_P'+point+'_x'+str(x)+'_y'+str(y)+'circ.txt'
+#    print_result(fits,output)
+    
+    n_mean = np.average(fits['n'], weights = 1/fits['err_n'])
+    outname = './plots/'+galaxy+'_P'+point+'_x'+str(x)+'_y'+str(y)+'_nmean_'
+    fits = analysis(star1, 300, function ='moff', circular = True, 
+                    plot = True, n_0 = n_mean)
+    make_plots(fits, save = False, outname = outname)
+#    output = './plots/Moffat_'+galaxy+'_P'+point+'_x'+str(x)+'_y'+str(y)+'nmean.txt'
+#    print_result(fits,output)
+    
+    print(galaxy+'_P'+point+'_x'+str(x)+'_y'+str(y), 'n: {:0.3f}' 
+          .format(n_mean))
 
     
 

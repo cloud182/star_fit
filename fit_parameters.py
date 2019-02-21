@@ -52,7 +52,7 @@ def measure_slope(directory, outname, field):
           file = f)
     for file in os.listdir(directory):
         filename = os.fsdecode(file)
-        if filename.endswith('.txt'):
+        if filename.startswith('Moffat') and filename.endswith('.txt'):
             table = ascii.read(os.path.join(directory,filename))
             results = fit_parameter(table,field,plot = True)
             #priting on screen
